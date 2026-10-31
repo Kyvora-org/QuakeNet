@@ -25,11 +25,32 @@ class DebugScreen extends StatefulWidget {
 class _DebugScreenState extends State<DebugScreen> {
   String _gpsStatus = 'Checking...';
   String _gpsAccuracy = 'NOT AVAILABLE';
+  bool _isLoadingEvents = false;
+  List<Map<String, dynamic>> _correlatedEvents = [];
 
   @override
   void initState() {
     super.initState();
     _checkGps();
+    _fetchCorrelatedEvents();
+  }
+
+  Future<void> _fetchCorrelatedEvents() async {
+    if (!mounted) return;
+    setState(() => _isLoadingEvents = true);
+    try {
+      final events = await widget.networkService.fetchRecentCorrelatedEvents();
+      if (mounted) {
+        setState(() {
+          _correlatedEvents = events;
+          _isLoadingEvents = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoadingEvents = false);
+      }
+    }
   }
 
   Future<void> _checkGps() async {
@@ -251,10 +272,179 @@ class _DebugScreenState extends State<DebugScreen> {
                   );
                 },
               ),
+              const SizedBox(height: 16),
+
+              // SECCIÓN DE EVENTOS CORRELACIONADOS (FASE 2C)
+              _buildCorrelatedEventsSection(),
             ],
           ),
         ),
       ),
     );
+  }
+
+  Widget _buildCorrelatedEventsSection() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.amber.withValues(alpha: 0.4)),
+      ),
+      child: ExpansionTile(
+        initiallyExpanded: false,
+        leading: const Icon(Icons.hub_outlined, color: Colors.amberAccent),
+        title: const Text(
+          'EVENTOS CORRELACIONADOS (Fase 2C)',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.amberAccent),
+        ),
+        subtitle: Text(
+          '${_correlatedEvents.length} evento(s) detectados por el motor de consenso',
+          style: const TextStyle(fontSize: 11, color: Colors.white70),
+        ),
+        childrenPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        children: [
+          // Banner de descargo de responsabilidad obligatorio
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.amber.shade900.withValues(alpha: 0.25),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.amber.shade700),
+            ),
+            child: const Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.warning_amber_rounded, color: Colors.amber, size: 20),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'DATOS EXPERIMENTALES — NO CONSTITUYE ALERTA PÚBLICA NI CONFIRMACIÓN OFICIAL. '
+                    'Los resultados reflejan correlaciones estadísticas internas de nodos ciudadanos.',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.amber),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+
+          // Barra de actualización
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Eventos en red (Supabase)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+              IconButton(
+                icon: const Icon(Icons.refresh, size: 20),
+                tooltip: 'Actualizar eventos',
+                onPressed: _isLoadingEvents ? null : _fetchCorrelatedEvents,
+              ),
+            ],
+          ),
+          if (_isLoadingEvents) const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: LinearProgressIndicator(),
+          ),
+
+          if (!_isLoadingEvents && _correlatedEvents.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(16),
+              alignment: Alignment.center,
+              child: const Text(
+                'No hay eventos sísmicos correlacionados activos en la base de datos.\n'
+                'Los eventos se forman cuando múltiples nodos independientes detectan un frente de onda coherente.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 11, color: Colors.white54, fontStyle: FontStyle.italic),
+              ),
+            ),
+
+          ..._correlatedEvents.map((ev) {
+            final status = ev['status']?.toString() ?? 'candidate';
+            final confidence = (ev['confidence'] as num?)?.toDouble() ?? 0.0;
+            final indepNodes = (ev['independent_node_count'] as num?)?.toDouble() ?? 0.0;
+            final nodeCount = ev['node_count'] ?? 0;
+            final clusters = ev['spatial_cluster_count'] ?? 1;
+            final lat = (ev['latitude'] as num?)?.toDouble();
+            final lon = (ev['longitude'] as num?)?.toDouble();
+            final radiusKm = (ev['estimated_radius_km'] as num?)?.toDouble() ?? 0.0;
+            final avgRatio = (ev['avg_sta_lta'] as num?)?.toDouble();
+            final maxPeak = (ev['max_peak_magnitude'] as num?)?.toDouble();
+            final reason = ev['rejection_reason']?.toString();
+            final detectedAt = DateTime.tryParse(ev['detected_at']?.toString() ?? '')?.toLocal();
+
+            return Card(
+              margin: const EdgeInsets.only(bottom: 8),
+              color: Colors.black26,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+                side: BorderSide(color: _statusColor(status).withValues(alpha: 0.5)),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: _statusColor(status),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            status.toUpperCase(),
+                            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
+                          ),
+                        ),
+                        Text(
+                          _formatDate(detectedAt),
+                          style: const TextStyle(fontSize: 11, color: Colors.white70),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Centroide: ${lat != null ? "${lat.toStringAsFixed(4)}, ${lon?.toStringAsFixed(4)}" : "Sin GPS"} (r ≈ ${radiusKm.toStringAsFixed(1)} km)',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Nodos: $nodeCount (Indep: ${indepNodes.toStringAsFixed(1)}) | Celdas: $clusters',
+                      style: const TextStyle(fontSize: 11, color: Colors.white70),
+                    ),
+                    Text(
+                      'Confianza: ${confidence.toStringAsFixed(1)}% | STA/LTA Prom: ${avgRatio?.toStringAsFixed(1) ?? "N/A"} | Pico: ${maxPeak != null ? "${maxPeak.toStringAsFixed(3)}g" : "N/A"}',
+                      style: const TextStyle(fontSize: 11, color: Colors.white70),
+                    ),
+                    if (reason != null && reason.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'Descarte: $reason',
+                        style: TextStyle(fontSize: 10, color: Colors.red.shade300, fontStyle: FontStyle.italic),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  Color _statusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'high_confidence':
+        return Colors.green.shade800;
+      case 'correlated':
+        return Colors.amber.shade900;
+      case 'discarded':
+        return Colors.red.shade900;
+      case 'candidate':
+      default:
+        return Colors.blueGrey.shade700;
+    }
   }
 }

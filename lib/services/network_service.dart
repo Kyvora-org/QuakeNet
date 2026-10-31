@@ -266,4 +266,22 @@ class NetworkService extends ChangeNotifier {
       _isFlushing = false;
     }
   }
+
+  /// Obtiene los eventos correlacionados recientes desde la tabla 'seismic_events' (Fase 2C).
+  ///
+  /// Uso estrictamente de diagnóstico y validación en DebugScreen.
+  Future<List<Map<String, dynamic>>> fetchRecentCorrelatedEvents({int limit = 10}) async {
+    if (_client == null) return [];
+    try {
+      final response = await _client
+          .from('seismic_events')
+          .select()
+          .order('detected_at', ascending: false)
+          .limit(limit);
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      debugPrint('[NETWORK] Error consultando seismic_events: $e');
+      return [];
+    }
+  }
 }
