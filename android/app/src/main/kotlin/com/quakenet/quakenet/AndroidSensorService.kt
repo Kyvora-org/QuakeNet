@@ -23,6 +23,12 @@ class AndroidSensorService(context: Context) : SensorEventListener {
             throw Exception("Accelerometer not available")
         }
         
+        // Prevent duplicate listeners: unregister prior listener if already active
+        if (isActive) {
+            sensorManager.unregisterListener(this)
+            isActive = false
+        }
+        
         // Convert Hz to microseconds delay
         val delayUs = (1000000 / samplingRate)
         
@@ -36,8 +42,10 @@ class AndroidSensorService(context: Context) : SensorEventListener {
     }
 
     fun stop() {
-        sensorManager.unregisterListener(this)
-        isActive = false
+        if (isActive) {
+            sensorManager.unregisterListener(this)
+            isActive = false
+        }
     }
 
     override fun onSensorChanged(event: SensorEvent?) {
@@ -62,6 +70,6 @@ class AndroidSensorService(context: Context) : SensorEventListener {
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
-        // No-op for now
+        // No-op
     }
 }

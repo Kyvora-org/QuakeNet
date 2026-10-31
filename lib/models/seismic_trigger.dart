@@ -7,8 +7,8 @@ class SeismicTrigger {
   final String nodeId;
   final String sessionId;
   final DateTime detectedAt;
-  final double latitude;
-  final double longitude;
+  final double? latitude;
+  final double? longitude;
   final double? locationAccuracyM;
   final double ratio;
   final double? peakMagnitude;
@@ -23,8 +23,8 @@ class SeismicTrigger {
     required this.nodeId,
     required this.sessionId,
     required this.detectedAt,
-    required this.latitude,
-    required this.longitude,
+    this.latitude,
+    this.longitude,
     this.locationAccuracyM,
     required this.ratio,
     this.peakMagnitude,
@@ -36,24 +36,24 @@ class SeismicTrigger {
   });
 
   /// Serialización para inserción en la tabla `triggers` de Supabase.
-  /// No envía campos nulos ni event_id (el correlador backend lo asigna).
+  /// No envía campos nulos ni inventa coordenadas.
+  /// event_id nunca se envía desde el cliente (el correlador backend lo asigna).
   Map<String, dynamic> toMap() {
     final map = <String, dynamic>{
       'id': triggerId,
       'node_id': nodeId,
       'session_id': sessionId,
       'detected_at': detectedAt.toUtc().toIso8601String(),
-      'latitude': latitude,
-      'longitude': longitude,
       'ratio': ratio,
       'platform': platform,
     };
+    if (latitude != null) map['latitude'] = latitude;
+    if (longitude != null) map['longitude'] = longitude;
     if (locationAccuracyM != null) map['location_accuracy_m'] = locationAccuracyM;
     if (peakMagnitude != null) map['peak_magnitude'] = peakMagnitude;
     if (durationMs != null) map['duration_ms'] = durationMs;
     if (samplingRateHz != null) map['sampling_rate_hz'] = samplingRateHz;
     if (appVersion != null) map['app_version'] = appVersion;
-    // event_id is intentionally never sent from client
     return map;
   }
 
@@ -62,8 +62,8 @@ class SeismicTrigger {
         nodeId: map['node_id'] as String,
         sessionId: map['session_id'] as String,
         detectedAt: DateTime.parse(map['detected_at'] as String).toLocal(),
-        latitude: (map['latitude'] as num).toDouble(),
-        longitude: (map['longitude'] as num).toDouble(),
+        latitude: map['latitude'] != null ? (map['latitude'] as num).toDouble() : null,
+        longitude: map['longitude'] != null ? (map['longitude'] as num).toDouble() : null,
         locationAccuracyM: map['location_accuracy_m'] != null ? (map['location_accuracy_m'] as num).toDouble() : null,
         ratio: (map['ratio'] as num).toDouble(),
         peakMagnitude: map['peak_magnitude'] != null ? (map['peak_magnitude'] as num).toDouble() : null,

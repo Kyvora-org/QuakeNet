@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 /// Identidad anónima y de sesión para un nodo experimental de QuakeNet.
 ///
 /// Conserva el anonimato (nodeId persiste pero no se vincula a datos personales).
+/// No utiliza IMEI, MAC, teléfono ni cuentas de usuario.
 class DeviceNode {
   final String nodeId;
   final String sessionId;
@@ -38,6 +39,17 @@ class DeviceNode {
       platform: platform,
       createdAt: DateTime.now().toUtc(),
       sensorCapabilities: const {'accelerometer': true},
+    );
+  }
+
+  /// Renueva el Session ID para una nueva sesión de monitoreo conservando el mismo Node ID.
+  DeviceNode renewSession() {
+    return DeviceNode(
+      nodeId: nodeId,
+      sessionId: const Uuid().v4(),
+      platform: platform,
+      createdAt: DateTime.now().toUtc(),
+      sensorCapabilities: sensorCapabilities,
     );
   }
 

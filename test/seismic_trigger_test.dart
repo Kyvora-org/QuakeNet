@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quakenet/models/seismic_trigger.dart';
+import 'package:quakenet/models/device_node.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   group('SeismicTrigger', () {
@@ -35,20 +37,22 @@ void main() {
       expect(map.containsKey('event_id'), false);
     });
 
-    test('toMap omits null optional fields', () {
+    test('toMap omits null optional fields including coordinates without GPS', () {
       final trigger = SeismicTrigger(
         triggerId: 'id',
         nodeId: 'node',
         sessionId: 'session',
         detectedAt: DateTime.utc(2026, 1, 1),
-        latitude: 0.0,
-        longitude: 0.0,
+        latitude: null,
+        longitude: null,
         ratio: 1.0,
         platform: 'android',
       );
 
       final map = trigger.toMap();
 
+      expect(map.containsKey('latitude'), false);
+      expect(map.containsKey('longitude'), false);
       expect(map.containsKey('location_accuracy_m'), false);
       expect(map.containsKey('peak_magnitude'), false);
       expect(map.containsKey('duration_ms'), false);
@@ -57,39 +61,27 @@ void main() {
       expect(map.containsKey('event_id'), false);
     });
 
-    test('fromMap round-trip preserves all values', () {
+    test('fromMap round-trip preserves all values including null coordinates', () {
       final original = SeismicTrigger(
-        triggerId: 'round-trip-id',
+        triggerId: 'round-trip-null-geo',
         nodeId: 'node-abc',
         sessionId: 'session-xyz',
         detectedAt: DateTime.utc(2026, 6, 15, 12, 0, 0),
-        latitude: 7.123,
-        longitude: -73.456,
-        locationAccuracyM: 25.0,
+        latitude: null,
+        longitude: null,
         ratio: 8.3,
-        peakMagnitude: 0.12,
-        durationMs: 3000,
-        samplingRateHz: 100.0,
         platform: 'ios',
-        appVersion: '1.0.0',
       );
 
-      // Simulate what Supabase would return 
       final jsonMap = <String, dynamic>{
-        'id': 'round-trip-id',
+        'id': 'round-trip-null-geo',
         'node_id': 'node-abc',
         'session_id': 'session-xyz',
         'detected_at': '2026-06-15T12:00:00.000Z',
-        'latitude': 7.123,
-        'longitude': -73.456,
-        'location_accuracy_m': 25.0,
+        'latitude': null,
+        'longitude': null,
         'ratio': 8.3,
-        'peak_magnitude': 0.12,
-        'duration_ms': 3000,
-        'sampling_rate_hz': 100.0,
         'platform': 'ios',
-        'app_version': '1.0.0',
-        'event_id': null,
       };
 
       final restored = SeismicTrigger.fromMap(jsonMap);
@@ -97,15 +89,36 @@ void main() {
       expect(restored.triggerId, original.triggerId);
       expect(restored.nodeId, original.nodeId);
       expect(restored.sessionId, original.sessionId);
-      expect(restored.latitude, original.latitude);
-      expect(restored.longitude, original.longitude);
-      expect(restored.locationAccuracyM, original.locationAccuracyM);
-      expect(restored.ratio, original.ratio);
-      expect(restored.peakMagnitude, original.peakMagnitude);
-      expect(restored.durationMs, original.durationMs);
-      expect(restored.samplingRateHz, original.samplingRateHz);
-      expect(restored.platform, original.platform);
-      expect(restored.appVersion, original.appVersion);
+      expect(restored.latitude, null);
+      expect(restored.longitude, null);
+      expect(restored.ratio, 8.3);
+      expect(restored.platform, 'ios');
+    });
+  });
+
+  group('DeviceNode Identity', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    test('persists nodeId across multiple loadExperimental calls', () async {
+      final first = await DeviceNode.loadExperimental(platform: 'android');
+      expect(first.nodeId.isNotEmpty, true);
+      expect(first.sessionId.isNotEmpty, true);
+
+      // Simular apertura posterior de la app
+      final second = await DeviceNode.loadExperimental(platform: 'android');
+      expect(second.nodeId, first.nodeId, reason: 'Node ID debe conservarse entre reinicios');
+      expect(second.sessionId != first.sessionId, true, reason: 'Session ID debe ser único para la nueva sesión');
+    });
+
+    test('renewSession creates new sessionId with identical nodeId', () async {
+      final node = await DeviceNode.loadExperimental(platform: 'android');
+      final renewed = node.renewSession();
+
+      expect(renewed.nodeId, node.nodeId);
+      expect(renewed.sessionId != node.sessionId, true);
+      expect(renewed.platform, node.platform);
     });
   });
 }

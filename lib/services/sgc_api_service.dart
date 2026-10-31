@@ -223,7 +223,7 @@ class ReverseGeocoder {
 
         String result;
         if (city.toString().isNotEmpty && state.toString().isNotEmpty) {
-          result = '${city}, ${state}';
+          result = '$city, $state';
         } else if (city.toString().isNotEmpty) {
           result = '$city, $country';
         } else if (state.toString().isNotEmpty) {

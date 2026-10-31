@@ -5,8 +5,14 @@ import 'screens/home/home_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'models/device_node.dart';
 
-const _supabaseUrl = String.fromEnvironment('SUPABASE_URL');
-const _supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
+const _supabaseUrl = String.fromEnvironment(
+  'SUPABASE_URL',
+  defaultValue: 'https://usafzmvlluuowumgxgpk.supabase.co',
+);
+const _supabaseAnonKey = String.fromEnvironment(
+  'SUPABASE_ANON_KEY',
+  defaultValue: 'sb_publishable_aPNk1IWJ6ULqOvXi-UUN3w_e1eiDKta',
+);
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../services/sensor_service.dart';
 import '../../services/recording_service.dart';
 import '../../services/network_service.dart';
+import '../../core/config/consensus_config.dart';
 import '../../widgets/sensor_chart.dart';
 import 'package:geolocator/geolocator.dart';
 
@@ -23,7 +24,7 @@ class DebugScreen extends StatefulWidget {
 
 class _DebugScreenState extends State<DebugScreen> {
   String _gpsStatus = 'Checking...';
-  String _gpsAccuracy = '-';
+  String _gpsAccuracy = 'NOT AVAILABLE';
 
   @override
   void initState() {
@@ -33,28 +34,36 @@ class _DebugScreenState extends State<DebugScreen> {
 
   Future<void> _checkGps() async {
     try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        if (mounted) setState(() => _gpsStatus = 'UNAVAILABLE (GPS deshabilitado)');
+        return;
+      }
+
       final perm = await Geolocator.checkPermission();
       if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) {
-        setState(() => _gpsStatus = 'UNAVAILABLE (Perm denied)');
+        if (mounted) setState(() => _gpsStatus = 'UNAVAILABLE (Permiso denegado)');
         return;
       }
       
       final pos = await Geolocator.getLastKnownPosition();
       if (pos != null) {
-        setState(() {
-          _gpsStatus = 'AVAILABLE';
-          _gpsAccuracy = '${pos.accuracy.toStringAsFixed(1)} m';
-        });
+        if (mounted) {
+          setState(() {
+            _gpsStatus = 'AVAILABLE';
+            _gpsAccuracy = '${pos.accuracy.toStringAsFixed(1)} m';
+          });
+        }
       } else {
-        setState(() => _gpsStatus = 'AVAILABLE (No fix yet)');
+        if (mounted) setState(() => _gpsStatus = 'AVAILABLE (Esperando fix)');
       }
     } catch (e) {
-      setState(() => _gpsStatus = 'ERROR');
+      if (mounted) setState(() => _gpsStatus = 'ERROR: $e');
     }
   }
 
   String _formatDate(DateTime? time) {
-    if (time == null) return 'N/A';
+    if (time == null) return 'NOT AVAILABLE';
     final local = time.toLocal();
     final h = local.hour.toString().padLeft(2, '0');
     final m = local.minute.toString().padLeft(2, '0');
@@ -72,55 +81,114 @@ class _DebugScreenState extends State<DebugScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Laboratorio & Diagnóstico'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Reintentar GPS',
+            onPressed: _checkGps,
+          )
+        ],
       ),
       body: SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(16.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // PANEL DE DIAGNÓSTICO
+              // PANEL DE DIAGNÓSTICO (FASE 2B.1)
               ListenableBuilder(
                 listenable: Listenable.merge([widget.sensorService, widget.networkService]),
                 builder: (context, child) {
                   final node = widget.networkService.node;
+                  final net = widget.networkService;
+                  final sensor = widget.sensorService;
                   
                   return Container(
-                    padding: const EdgeInsets.all(12),
+                    padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
+                      color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(10),
                       border: Border.all(color: Colors.white24),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('DIAGNÓSTICO DEL NODO (Fase 2B)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.blueAccent)),
-                        const SizedBox(height: 8),
-                        Text('Sensor: ${widget.sensorService.status.name.toUpperCase()}'),
-                        Text('Power Mode: NORMAL'), // Fixed for now
-                        Text('Requested rate: ${widget.sensorService.requestedRate} Hz'),
-                        Text('Actual rate: ≈ ${widget.sensorService.actualRate.toStringAsFixed(2)} Hz'),
+                        const Row(
+                          children: [
+                            Icon(Icons.monitor_heart, size: 18, color: Colors.blueAccent),
+                            SizedBox(width: 8),
+                            Text(
+                              'DIAGNÓSTICO DEL NODO (Fase 2B.1)',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.blueAccent),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        Text('SENSOR: ${sensor.status.name.toUpperCase()}'),
+                        Text('POWER MODE: ${sensor.powerMode.name.toUpperCase()}'),
+                        Text('REQUESTED RATE: ${sensor.requestedRate} Hz'),
+                        Text('ACTUAL RATE: ${sensor.actualRate > 0 ? "≈ ${sensor.actualRate.toStringAsFixed(1)} Hz" : "CALCULATING..."}'),
                         const Divider(height: 16),
-                        Text('Node ID: ${_maskId(node.nodeId)}'),
-                        Text('Session ID: ${_maskId(node.sessionId)}'),
+                        Text('NODE ID: ${_maskId(node.nodeId)}'),
+                        Text('SESSION ID: ${_maskId(node.sessionId)}'),
                         const Divider(height: 16),
                         Text('GPS: $_gpsStatus'),
-                        Text('GPS accuracy: $_gpsAccuracy'),
+                        Text('GPS ACCURACY: $_gpsAccuracy'),
                         const Divider(height: 16),
-                        Text('Supabase: ${widget.networkService.status.name.toUpperCase()}'),
-                        Text('Upload count: ${widget.networkService.uploadCount}'),
-                        Text('Last trigger: ${_formatDate(widget.networkService.lastTriggerTime)}'),
+                        Text('NETWORK: ${net.status.name.toUpperCase()}'),
+                        Text('PENDING TRIGGERS: ${net.pendingCount}'),
+                        Text('UPLOAD COUNT: ${net.uploadCount}'),
+                        Text('LAST TRIGGER: ${_formatDate(net.lastTriggerTime)}'),
+                        Text('LAST UPLOAD: ${_formatDate(net.lastUploadTime)}'),
+                        Text('LAST ERROR: ${net.errorMessage ?? "NONE"}'),
                       ],
                     ),
                   );
                 },
               ),
-              const SizedBox(height: 16),
-              
-              const Text('Gráfica en Tiempo Real', style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 14),
+
+              // SELECTOR DE MODO DE ENERGÍA
+              const Text('Selector de Modo de Consumo', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
               const SizedBox(height: 8),
-              Expanded(
+              ListenableBuilder(
+                listenable: widget.sensorService,
+                builder: (context, child) {
+                  return Wrap(
+                    spacing: 8,
+                    children: [
+                      ChoiceChip(
+                        label: const Text('Low Power (25 Hz)'),
+                        selected: widget.sensorService.powerMode == PowerMode.lowPower,
+                        onSelected: (val) {
+                          if (val) widget.sensorService.setPowerMode(PowerMode.lowPower);
+                        },
+                      ),
+                      ChoiceChip(
+                        label: const Text('Normal (50 Hz)'),
+                        selected: widget.sensorService.powerMode == PowerMode.normal,
+                        onSelected: (val) {
+                          if (val) widget.sensorService.setPowerMode(PowerMode.normal);
+                        },
+                      ),
+                      ChoiceChip(
+                        label: const Text('Research (100 Hz)'),
+                        selected: widget.sensorService.powerMode == PowerMode.research,
+                        onSelected: (val) {
+                          if (val) widget.sensorService.setPowerMode(PowerMode.research);
+                        },
+                      ),
+                    ],
+                  );
+                },
+              ),
+              const SizedBox(height: 14),
+
+              // GRÁFICA EN TIEMPO REAL
+              const Text('Gráfica en Tiempo Real', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 180,
                 child: ListenableBuilder(
                   listenable: widget.sensorService,
                   builder: (context, child) {
@@ -128,39 +196,56 @@ class _DebugScreenState extends State<DebugScreen> {
                   },
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 14),
+
+              // CONTROLES DE ACCIÓN
               ListenableBuilder(
-                listenable: Listenable.merge([widget.sensorService, widget.recordingService]),
+                listenable: widget.sensorService,
                 builder: (context, child) {
                   final isActive = widget.sensorService.status == SensorStatus.active;
-                  final isRecording = widget.recordingService.isRecording;
 
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: ElevatedButton(
-                              onPressed: () {
-                                if (isActive) {
-                                  widget.sensorService.stopMonitoring();
-                                } else {
-                                  widget.sensorService.startMonitoring(rate: 50);
-                                }
-                              },
-                              style: ElevatedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(vertical: 16),
-                                backgroundColor: isActive ? Colors.red.shade100 : Colors.green.shade100,
-                                foregroundColor: isActive ? Colors.red.shade900 : Colors.green.shade900,
-                              ),
-                              child: Text(
-                                isActive ? 'DETENER SENSOR' : 'INICIAR SENSOR',
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                              ),
+                      ElevatedButton(
+                        onPressed: () {
+                          if (isActive) {
+                            widget.sensorService.stopMonitoring();
+                          } else {
+                            widget.sensorService.startMonitoring();
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          backgroundColor: isActive ? Colors.red.shade900 : Colors.green.shade800,
+                          foregroundColor: Colors.white,
+                        ),
+                        child: Text(
+                          isActive ? 'DETENER SENSOR' : 'INICIAR SENSOR',
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.flash_on, size: 18),
+                        label: const Text('GENERAR TRIGGER SINTÉTICO (TEST)'),
+                        onPressed: () {
+                          // Genera un trigger sintético controlado para verificar el pipeline Supabase
+                          widget.networkService.publishMovementCandidate(
+                            timestamp: DateTime.now().toUtc(),
+                            peakMagnitude: 0.15,
+                            staLtaRatio: 5.5,
+                            samplingRateHz: widget.sensorService.actualRate > 0 
+                                ? widget.sensorService.actualRate 
+                                : widget.sensorService.requestedRate.toDouble(),
+                          );
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Trigger sintético encolado para verificación de transporte.'),
+                              duration: Duration(seconds: 2),
                             ),
-                          ),
-                        ],
+                          );
+                        },
                       ),
                     ],
                   );

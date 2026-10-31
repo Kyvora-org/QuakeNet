@@ -58,5 +58,7 @@ app.*.map.json
 !.env.example
 
 # Local scratch & debug dumps
+supabase/.temp/
+.supabase/
 sgc.js
 sismos.html
